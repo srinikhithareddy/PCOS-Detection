@@ -1,0 +1,16 @@
+filename,brisque_score,niqe_score,error,class,filepath,brisque_category,niqe_category,quality_category,preprocessing_decision
+dominant_follicle_1249.jpg,7.0889892578125,4.226322356621251,,dominant_follicle,data\raw\UltraSound\Ovarian_US\dominant_follicle\dominant_follicle_1249.jpg,good,good,good,continue
+dominant_follicle_1119.jpg,6.8316650390625,3.6879293826731527,,dominant_follicle,data\raw\UltraSound\Ovarian_US\dominant_follicle\dominant_follicle_1119.jpg,good,good,good,continue
+dominant_follicle_0102.jpg,9.3289794921875,4.169964501217549,,dominant_follicle,data\raw\UltraSound\Ovarian_US\dominant_follicle\dominant_follicle_0102.jpg,good,good,good,continue
+healthy_1015.jpg,10.01434326171875,4.439466903961695,,healthy,data\raw\UltraSound\Ovarian_US\healthy\healthy_1015.jpg,good,good,good,continue
+healthy_1419.jpg,9.43328857421875,4.117377866628411,,healthy,data\raw\UltraSound\Ovarian_US\healthy\healthy_1419.jpg,good,good,good,continue
+healthy_0083.jpg,-0.60772705078125,4.059239068448891,,healthy,data\raw\UltraSound\Ovarian_US\healthy\healthy_0083.jpg,good,good,good,continue
+poly_cyst_0877.jpg,6.24530029296875,3.1976891206114826,,poly_cyst,data\raw\UltraSound\Ovarian_US\poly_cyst\poly_cyst_0877.jpg,good,good,good,continue
+poly_cyst_0287.jpg,10.76239013671875,4.152059016114228,,poly_cyst,data\raw\UltraSound\Ovarian_US\poly_cyst\poly_cyst_0287.jpg,good,good,good,continue
+poly_cyst_1357.jpg,7.91424560546875,4.032884265970747,,poly_cyst,data\raw\UltraSound\Ovarian_US\poly_cyst\poly_cyst_1357.jpg,good,good,good,continue
+simple_cyst_1241.jpg,9.31402587890625,3.951341040986102,,simple_cyst,data\raw\UltraSound\Ovarian_US\simple_cyst\simple_cyst_1241.jpg,good,good,good,continue
+simple_cyst_0062.jpg,6.6187744140625,4.8060042859370045,,simple_cyst,data\raw\UltraSound\Ovarian_US\simple_cyst\simple_cyst_0062.jpg,good,good,good,continue
+simple_cyst_0421.jpg,4.5618896484375,4.663229665488446,,simple_cyst,data\raw\UltraSound\Ovarian_US\simple_cyst\simple_cyst_0421.jpg,good,good,good,continue
+complex_cyst_0478.jpg,5.50933837890625,4.6870565238802255,,complex_cyst,data\raw\UltraSound\Ovarian_US\complex_cyst\complex_cyst_0478.jpg,good,good,good,continue
+complex_cyst_0934.jpg,5.50933837890625,4.6870565238802255,,complex_cyst,data\raw\UltraSound\Ovarian_US\complex_cyst\complex_cyst_0934.jpg,good,good,good,continue
+complex_cyst_0022.jpg,5.50933837890625,4.6870565238802255,,complex_cyst,data\raw\UltraSound\Ovarian_US\complex_cyst\complex_cyst_0022.jpg,good,good,good,continue

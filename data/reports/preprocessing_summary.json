@@ -1,0 +1,42 @@
+{
+  "timestamp": "2026-08-15T18:57:42.236603",
+  "total_images": 6876,
+  "quality_distribution": {
+    "good": 1665,
+    "poor": 3645,
+    "review": 933,
+    "unusable": 633
+  },
+  "preprocessing_status": {
+    "completed": 5310,
+    "review_pending": 933,
+    "unusable": 633
+  },
+  "output_directories": {
+    "good": "data\\processed\\ultrasound\\preprocessed\\good",
+    "enhanced": "data\\processed\\ultrasound\\preprocessed\\enhanced",
+    "review": "data\\processed\\ultrasound\\review",
+    "unusable": "data\\processed\\ultrasound\\unusable"
+  },
+  "preprocessing_pipeline": {
+    "good": [
+      "resize",
+      "lee_filter",
+      "clahe",
+      "normalize"
+    ],
+    "poor": [
+      "enhance",
+      "resize",
+      "lee_filter",
+      "clahe",
+      "normalize"
+    ],
+    "review": [
+      "copy_only"
+    ],
+    "unusable": [
+      "copy_only"
+    ]
+  }
+}

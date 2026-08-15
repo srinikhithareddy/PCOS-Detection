@@ -1,0 +1,16 @@
+filename,brisque_score,niqe_score,error,class,filepath,brisque_category,niqe_category,quality_category,preprocessing_decision,old_quality_category,old_preprocessing_decision,brisque_category_new,niqe_category_new,quality_category_new,preprocessing_decision_new
+dominant_follicle_0517.jpg,22.464111328125,5.3170491661605706,,dominant_follicle,data\raw\UltraSound\Ovarian_US\dominant_follicle\dominant_follicle_0517.jpg,poor,poor,poor,enhance,poor,enhance,poor,good,poor,enhance
+dominant_follicle_1204.jpg,20.29376220703125,7.351704277821737,,dominant_follicle,data\raw\UltraSound\Ovarian_US\dominant_follicle\dominant_follicle_1204.jpg,poor,unusable,unusable,reject,unusable,reject,poor,poor,poor,enhance
+dominant_follicle_0481.jpg,21.58404541015625,7.953399380659277,,dominant_follicle,data\raw\UltraSound\Ovarian_US\dominant_follicle\dominant_follicle_0481.jpg,poor,unusable,unusable,reject,unusable,reject,poor,poor,poor,enhance
+healthy_1223.jpg,9.54364013671875,5.524703718858783,,healthy,data\raw\UltraSound\Ovarian_US\healthy\healthy_1223.jpg,good,poor,poor,enhance,poor,enhance,good,poor,poor,enhance
+healthy_1057.jpg,17.13446044921875,6.640858881657357,,healthy,data\raw\UltraSound\Ovarian_US\healthy\healthy_1057.jpg,poor,poor,poor,enhance,poor,enhance,poor,poor,poor,enhance
+healthy_1369.jpg,12.40399169921875,6.717221044826746,,healthy,data\raw\UltraSound\Ovarian_US\healthy\healthy_1369.jpg,poor,poor,poor,enhance,poor,enhance,good,poor,poor,enhance
+poly_cyst_1274.jpg,15.26971435546875,4.773661203288805,,poly_cyst,data\raw\UltraSound\Ovarian_US\poly_cyst\poly_cyst_1274.jpg,poor,good,poor,enhance,poor,enhance,poor,good,poor,enhance
+poly_cyst_0500.jpg,22.53997802734375,3.346466804455259,,poly_cyst,data\raw\UltraSound\Ovarian_US\poly_cyst\poly_cyst_0500.jpg,poor,good,poor,enhance,poor,enhance,poor,good,poor,enhance
+poly_cyst_0424.jpg,24.38665771484375,3.881681072299191,,poly_cyst,data\raw\UltraSound\Ovarian_US\poly_cyst\poly_cyst_0424.jpg,poor,good,poor,enhance,poor,enhance,poor,good,poor,enhance
+simple_cyst_0059.jpg,12.04705810546875,6.571026456690223,,simple_cyst,data\raw\UltraSound\Ovarian_US\simple_cyst\simple_cyst_0059.jpg,poor,poor,poor,enhance,poor,enhance,good,poor,poor,enhance
+simple_cyst_0672.jpg,15.8385009765625,5.302653404232033,,simple_cyst,data\raw\UltraSound\Ovarian_US\simple_cyst\simple_cyst_0672.jpg,poor,poor,poor,enhance,poor,enhance,poor,good,poor,enhance
+simple_cyst_0392.jpg,4.7122802734375,5.972999597019462,,simple_cyst,data\raw\UltraSound\Ovarian_US\simple_cyst\simple_cyst_0392.jpg,good,poor,poor,enhance,poor,enhance,good,poor,poor,enhance
+complex_cyst_0800.jpg,24.60882568359375,4.660186682880868,,complex_cyst,data\raw\UltraSound\Ovarian_US\complex_cyst\complex_cyst_0800.jpg,poor,good,poor,enhance,poor,enhance,poor,good,poor,enhance
+complex_cyst_0607.jpg,18.9169921875,6.318572441185506,,complex_cyst,data\raw\UltraSound\Ovarian_US\complex_cyst\complex_cyst_0607.jpg,poor,poor,poor,enhance,poor,enhance,poor,poor,poor,enhance
+complex_cyst_1365.jpg,19.99029541015625,4.761763156482721,,complex_cyst,data\raw\UltraSound\Ovarian_US\complex_cyst\complex_cyst_1365.jpg,poor,good,poor,enhance,poor,enhance,poor,good,poor,enhance
