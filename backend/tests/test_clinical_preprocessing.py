@@ -9,8 +9,8 @@ import tempfile
 import shutil
 import os
 
-from clinical_preprocessing import ClinicalPreprocessor
-from clinical_preprocessing_config import ClinicalPreprocessingConfig
+from clinical_preprocessing.clinical_preprocessor import ClinicalPreprocessor
+from configs.clinical_preprocessing_config import ClinicalPreprocessingConfig
 
 
 class TestClinicalPreprocessor:

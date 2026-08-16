@@ -10,8 +10,8 @@ import os
 from PIL import Image
 import io
 
-from pipeline import PreprocessingPipeline
-from pipeline_config import PipelineConfig
+from pipeline.preprocessing_pipeline import PreprocessingPipeline
+from configs.pipeline_config import PipelineConfig
 
 
 class TestPreprocessingPipeline:

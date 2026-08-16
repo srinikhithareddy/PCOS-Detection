@@ -10,7 +10,7 @@ from pyiqa import create_metric
 import torch
 import sys
 sys.path.insert(0, str(Path(__file__).parent))
-import config
+from configs.preprocessing_config import PreprocessingConfig
 
 print("=" * 80)
 print("PYIQA BRISQUE AND NIQE TEST ON 10 ULTRASOUND IMAGES")

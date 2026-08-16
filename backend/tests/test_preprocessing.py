@@ -10,9 +10,8 @@ import os
 import tempfile
 import shutil
 
-from preprocessing import UltrasoundPreprocessor
-from preprocessing_config import PreprocessingConfig
-from preprocessing.ultrasound_preprocessor import PreprocessingStage
+from preprocessing.ultrasound_preprocessor import UltrasoundPreprocessor, PreprocessingStage
+from configs.preprocessing_config import PreprocessingConfig
 
 
 class TestUltrasoundPreprocessor:

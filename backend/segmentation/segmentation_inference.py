@@ -12,7 +12,7 @@ from PIL import Image
 import tensorflow as tf
 
 from models.unet import UNet
-from preprocessing_config import PreprocessingConfig
+from configs.preprocessing_config import PreprocessingConfig
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

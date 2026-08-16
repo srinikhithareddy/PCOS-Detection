@@ -8,9 +8,9 @@ import tempfile
 import shutil
 import os
 
-from segmentation import SegmentationInference
+from segmentation.segmentation_inference import SegmentationInference
 from models.unet import UNet, create_unet_model
-from preprocessing_config import PreprocessingConfig
+from configs.preprocessing_config import PreprocessingConfig
 
 
 class TestUNetArchitecture:

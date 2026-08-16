@@ -11,11 +11,12 @@ from datetime import datetime
 import numpy as np
 import pandas as pd
 
-from pipeline_config import PipelineConfig
-from quality_assessment import ImageQualityAssessor, ClinicalQualityAssessor
-from preprocessing import UltrasoundPreprocessor
-from clinical_preprocessing import ClinicalPreprocessor
-from segmentation import SegmentationInference
+from configs.pipeline_config import PipelineConfig
+from quality_assessment.image_quality import ImageQualityAssessor
+from quality_assessment.clinical_quality import ClinicalQualityAssessor
+from preprocessing.ultrasound_preprocessor import UltrasoundPreprocessor
+from clinical_preprocessing.clinical_preprocessor import ClinicalPreprocessor
+from segmentation.segmentation_inference import SegmentationInference
 
 # Configure logging
 def setup_logging():

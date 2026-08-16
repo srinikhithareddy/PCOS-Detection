@@ -6,8 +6,9 @@ import pytest
 import numpy as np
 from PIL import Image
 import io
-from quality_assessment import ImageQualityAssessor, ClinicalQualityAssessor
-from quality_config import QualityConfig
+from quality_assessment.image_quality import ImageQualityAssessor
+from quality_assessment.clinical_quality import ClinicalQualityAssessor
+from configs.quality_config import QualityConfig
 
 
 class TestImageQualityAssessor:
