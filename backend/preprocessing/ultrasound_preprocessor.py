@@ -328,57 +328,192 @@ class UltrasoundPreprocessor:
     def _apply_srad(self, image: np.ndarray, params: Dict[str, Any]) -> np.ndarray:
         """
         Apply Speckle Reducing Anisotropic Diffusion (SRAD)
-        Note: SRAD is computationally intensive and may not be reliably supported
-        Falls back to Lee filter if SRAD fails
+        
+        SRAD is specifically designed for ultrasound speckle noise reduction.
+        It uses the Instantaneous Coefficient of Variation (ICOV) which is
+        speckle-aware, unlike standard anisotropic diffusion that uses gradient magnitude.
+        
+        The diffusion coefficient is based on ICOV/q0 where:
+        - ICOV (q) = sqrt(local_variance) / local_mean
+        - q0 is the speckle scale parameter estimated from homogeneous regions
+        
+        Mathematical Formulation (Yu & Acton, IEEE TIP 2002):
+        - Diffusion equation: dI/dt = div(c(q) * grad(I))
+        - Diffusion coefficient: c(q) = 1 / (1 + max(0, q^2 - q0^2) / (q0^2 * (1 + q0^2)))
+        - Bounds: c(q) in [0.0, 1.0], where c=1 in homogeneous regions (q <= q0)
+          and c -> 0 at anatomical edges (q > q0).
+        - Discrete divergence: div = c_N*d_N + c_S*d_S + c_W*d_W + c_E*d_E
+          where d_N = I(i-1,j) - I(i,j), d_S = I(i+1,j) - I(i,j), etc.
         
         Args:
             image: Input image
-            params: SRAD parameters
+            params: SRAD parameters including iterations, time_step, q0, kernel_size
             
         Returns:
             Denoised image
         """
         try:
-            # Convert to grayscale
+            # Convert to grayscale for SRAD processing
             if len(image.shape) == 3:
                 gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
             else:
                 gray = image.copy()
             
-            # SRAD implementation (simplified version)
-            # This is a basic anisotropic diffusion implementation
-            iterations = params['iterations']
-            time_step = params['time_step']
-            conductance = params['conductance']
+            # SRAD parameters
+            iterations = params.get('iterations', self.config.SRAD_ITERATIONS)
+            delta_t = params.get('time_step', self.config.SRAD_TIME_STEP)
+            q0_config = params.get('q0', None)
+            kernel_size = params.get('kernel_size', self.config.SRAD_KERNEL_SIZE)
+            q0_estimation_region = params.get('q0_estimation_region', 'center')
             
-            denoised = gray.astype(np.float32)
+            # Ensure kernel size is odd
+            if kernel_size % 2 == 0:
+                kernel_size += 1
             
-            for _ in range(iterations):
-                # Calculate gradients
-                grad_x = cv2.Sobel(denoised, cv2.CV_32F, 1, 0)
-                grad_y = cv2.Sobel(denoised, cv2.CV_32F, 0, 1)
-                
-                # Calculate gradient magnitude
-                grad_mag = np.sqrt(grad_x**2 + grad_y**2)
-                
-                # Calculate diffusion coefficient
-                diffusion_coeff = 1.0 / (1.0 + (grad_mag / conductance)**2)
-                
-                # Apply diffusion
-                laplacian = cv2.Laplacian(denoised, cv2.CV_32F)
-                denoised = denoised + time_step * diffusion_coeff * laplacian
+            # Convert to float64 for numerical precision during diffusion
+            denoised64 = gray.astype(np.float64)
             
-            denoised = np.clip(denoised, 0, 255).astype(np.uint8)
+            # Estimate q0 from image if not provided
+            if q0_config is None:
+                q0 = self._estimate_q0(denoised64, kernel_size, q0_estimation_region)
+                logger.info(f"Auto-estimated q0: {q0:.4f}")
+            else:
+                q0 = float(q0_config)
+                logger.info(f"Using configured q0: {q0:.4f}")
+            
+            # Create kernel for local statistics
+            kernel = np.ones((kernel_size, kernel_size), np.float64) / (kernel_size * kernel_size)
+            
+            # SRAD iterations - perform all iterations in floating point
+            for iteration in range(iterations):
+                # 1. Calculate local mean using convolution with reflection border
+                local_mean = cv2.filter2D(denoised64, -1, kernel, borderType=cv2.BORDER_REFLECT)
+                
+                # 2. Calculate local variance: E[X^2] - (E[X])^2
+                local_squared_mean = cv2.filter2D(denoised64**2, -1, kernel, borderType=cv2.BORDER_REFLECT)
+                local_variance = np.maximum(local_squared_mean - local_mean**2, 0.0)
+                
+                # 3. Calculate ICOV (Instantaneous Coefficient of Variation): q = sqrt(variance) / mean
+                local_std = np.sqrt(local_variance)
+                q = np.divide(local_std, local_mean, 
+                              out=np.zeros_like(local_std), 
+                              where=local_mean > 1e-6)
+                
+                # 4. Calculate SRAD diffusion coefficient c(q) [Yu & Acton 2002, Eq. 33]
+                # Homogeneous regions (q <= q0): max(0, q^2 - q0^2) = 0 -> c(q) = 1.0 (isotropic diffusion).
+                # Edge regions (q > q0): c(q) decreases toward 0.0 (inhibits diffusion across edges).
+                num = np.maximum(0.0, q**2 - q0**2)
+                den = q0**2 * (1.0 + q0**2)
+                diffusion_coeff = 1.0 / (1.0 + np.divide(num, den, 
+                                                         out=np.zeros_like(num), 
+                                                         where=den > 1e-6))
+                diffusion_coeff = np.clip(diffusion_coeff, 0.0, 1.0)
+                
+                # 5. Compute directional neighbor gradients with reflection boundary padding
+                # Reflection padding ensures Neumann (zero-flux) boundary conditions at image borders
+                I_pad = np.pad(denoised64, ((1, 1), (1, 1)), mode='reflect')
+                c_pad = np.pad(diffusion_coeff, ((1, 1), (1, 1)), mode='reflect')
+                
+                # Gradients to 4-connected neighbors: d = I_neighbor - I_center
+                d_n = I_pad[:-2, 1:-1] - denoised64   # North (i-1, j)
+                d_s = I_pad[2:, 1:-1] - denoised64    # South (i+1, j)
+                d_w = I_pad[1:-1, :-2] - denoised64   # West (i, j-1)
+                d_e = I_pad[1:-1, 2:] - denoised64    # East (i, j+1)
+                
+                # Directional conduction coefficients (averaged between center and neighbor)
+                c_n = 0.5 * (diffusion_coeff + c_pad[:-2, 1:-1])
+                c_s = 0.5 * (diffusion_coeff + c_pad[2:, 1:-1])
+                c_w = 0.5 * (diffusion_coeff + c_pad[1:-1, :-2])
+                c_e = 0.5 * (diffusion_coeff + c_pad[1:-1, 2:])
+                
+                # 6. Calculate discrete divergence of diffusion flux
+                div_term = c_n * d_n + c_s * d_s + c_w * d_w + c_e * d_e
+                
+                # 7. Apply SRAD update: I^{k+1} = I^k + dt * div(c * grad(I))
+                denoised64 = denoised64 + delta_t * div_term
+            
+            # Final clipping to valid range after all floating point iterations complete
+            denoised64 = np.clip(denoised64, 0, 255)
+            
+            # Convert back to uint8
+            denoised = denoised64.astype(np.uint8)
             
             # Convert back to original color space if needed
             if len(image.shape) == 3:
-                denoised = cv2.cvtColor(denoised, cv2.COLOR_GRAY2BGR)
-            
-            return denoised
+                denoised_bgr = cv2.cvtColor(denoised, cv2.COLOR_GRAY2BGR)
+                return denoised_bgr
+            else:
+                return denoised
             
         except Exception as e:
-            logger.warning(f"SRAD failed, falling back to Lee filter: {str(e)}")
+            logger.error(f"SRAD failed: {str(e)}")
+            logger.warning("Falling back to Lee filter")
             return self._apply_lee_filter(image, self.config.get_noise_reduction_params())
+    
+    def _estimate_q0(self, image: np.ndarray, kernel_size: int, region: str = 'center') -> float:
+        """
+        Estimate q0 (speckle scale parameter) from homogeneous regions of the image.
+        
+        q0 represents the coefficient of variation in fully developed speckle regions.
+        For ultrasound images, this is typically estimated from homogeneous areas.
+        
+        Args:
+            image: Input image (float64)
+            kernel_size: Kernel size for local statistics
+            region: Region to use for estimation ('center', 'corners', 'full')
+            
+        Returns:
+            Estimated q0 value
+        """
+        h, w = image.shape
+        
+        # Select region for q0 estimation
+        if region == 'center':
+            # Use center 50% of image
+            margin_h = h // 4
+            margin_w = w // 4
+            region_img = image[margin_h:h-margin_h, margin_w:w-margin_w]
+        elif region == 'corners':
+            # Use corners (each 25% of image)
+            corner_size_h = h // 4
+            corner_size_w = w // 4
+            corners = np.concatenate([
+                image[:corner_size_h, :corner_size_w].flatten(),
+                image[:corner_size_h, -corner_size_w:].flatten(),
+                image[-corner_size_h:, :corner_size_w].flatten(),
+                image[-corner_size_h:, -corner_size_w:].flatten()
+            ])
+            region_img = corners.reshape(-1, 1)
+        else:  # 'full'
+            region_img = image
+        
+        # Calculate local statistics in the selected region
+        kernel = np.ones((kernel_size, kernel_size), np.float64) / (kernel_size * kernel_size)
+        
+        if len(region_img.shape) == 1:
+            # For corner case, use simple statistics
+            region_mean = np.mean(region_img)
+            region_std = np.std(region_img)
+            q0_estimated = region_std / (region_mean + 1e-6)
+        else:
+            # For 2D regions, use local statistics
+            local_mean = cv2.filter2D(region_img, -1, kernel, borderType=cv2.BORDER_REFLECT)
+            local_squared_mean = cv2.filter2D(region_img**2, -1, kernel, borderType=cv2.BORDER_REFLECT)
+            local_variance = np.maximum(local_squared_mean - local_mean**2, 0.0)
+            local_std = np.sqrt(local_variance)
+            
+            # Calculate coefficient of variation
+            icov = np.divide(local_std, local_mean, 
+                            out=np.zeros_like(local_std), 
+                            where=local_mean > 1e-6)
+            
+            # Use median of ICOV as q0 estimate (robust to outliers)
+            q0_estimated = np.median(icov)
+        
+        # Clamp to reasonable range for ultrasound images
+        q0_estimated = np.clip(q0_estimated, 0.05, 1.0)
+        
+        return float(q0_estimated)
     
     def _apply_clahe(self, image: np.ndarray) -> np.ndarray:
         """

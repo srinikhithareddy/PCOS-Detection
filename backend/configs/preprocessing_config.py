@@ -28,16 +28,18 @@ class PreprocessingConfig:
     # ===== SPECKLE NOISE REDUCTION CONFIGURATION =====
     
     # Noise reduction method: 'lee' or 'srad'
-    NOISE_REDUCTION_METHOD = 'lee'
+    NOISE_REDUCTION_METHOD = 'srad'
     
     # Lee filter parameters
     LEE_FILTER_SIZE = 5  # Kernel size (must be odd)
     LEE_FILTER_ITERATIONS = 1  # Number of iterations
     
-    # SRAD parameters (if implemented)
-    SRAD_ITERATIONS = 100
-    SRAD_TIME_STEP = 0.05
-    SRAD_CONDUCTANCE = 0.1
+    # SRAD parameters (Speckle Reducing Anisotropic Diffusion)
+    SRAD_ITERATIONS = 5  # Number of diffusion iterations (conservative initial test)
+    SRAD_TIME_STEP = 0.05  # Time step for numerical stability (0.01-0.25)
+    SRAD_Q0 = None  # Speckle scale parameter (None = auto-estimate from image)
+    SRAD_KERNEL_SIZE = 3  # Kernel size for local statistics (3-5)
+    SRAD_Q0_ESTIMATION_REGION = 'center'  # 'center', 'corners', or 'full' for q0 estimation
     
     # ===== CLAHE CONFIGURATION =====
     
@@ -174,7 +176,9 @@ class PreprocessingConfig:
                 'method': 'srad',
                 'iterations': cls.SRAD_ITERATIONS,
                 'time_step': cls.SRAD_TIME_STEP,
-                'conductance': cls.SRAD_CONDUCTANCE
+                'q0': cls.SRAD_Q0,
+                'kernel_size': cls.SRAD_KERNEL_SIZE,
+                'q0_estimation_region': cls.SRAD_Q0_ESTIMATION_REGION
             }
         else:
             return {'method': cls.NOISE_REDUCTION_METHOD}

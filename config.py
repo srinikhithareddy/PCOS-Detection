@@ -27,7 +27,7 @@ class Config:
     NIQE_POOR_THRESHOLD = 8.0
     
     # Image preprocessing
-    TARGET_SIZE = (256, 256)
+    TARGET_SIZE = (512, 512)
     CLAHE_CLIP_LIMIT = 2.0
     CLAHE_TILE_SIZE = (8, 8)
     
