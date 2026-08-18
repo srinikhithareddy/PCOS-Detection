@@ -64,6 +64,16 @@ class PreprocessingConfig:
     # Segmentation threshold
     SEGMENTATION_THRESHOLD = 0.5
     
+    # Opt-in only. When False (default), UltrasoundPreprocessor.preprocess_image()
+    # skips segmentation/ROI entirely and normalizes the full CLAHE-enhanced image
+    # instead. When True, it additionally generates classical-thresholding
+    # pseudo-labels (see _generate_placeholder_pseudolabel) and saves them under the
+    # *_placeholder_threshold_WEAK_LABEL stages -- these are NOT validated ground
+    # truth and are never used for final_image. Real segmentation always requires
+    # UNET_MODEL_PATH to point to actual trained weights, loaded via
+    # SegmentationInference, independent of this flag.
+    ALLOW_PLACEHOLDER_SEGMENTATION = False
+    
     # Minimum ROI size (pixels)
     MIN_ROI_AREA = 1000
     
@@ -98,8 +108,10 @@ class PreprocessingConfig:
         'resized': 'resized',
         'denoised': 'denoised',
         'clahe': 'clahe_enhanced',
-        'segmentation': 'segmentation',
-        'roi': 'roi_extracted',
+        'segmentation': 'segmentation',                # real trained-U-Net masks only
+        'roi': 'roi_extracted',                         # real trained-U-Net ROI only
+        'segmentation_placeholder_threshold_WEAK_LABEL': 'segmentation_placeholder_WEAK_LABEL',
+        'roi_placeholder_threshold_WEAK_LABEL': 'roi_placeholder_WEAK_LABEL',
         'normalized': 'normalized'
     }
     
