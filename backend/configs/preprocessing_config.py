@@ -9,12 +9,15 @@ import os
 
 class PreprocessingConfig:
     """Configuration for ultrasound image preprocessing"""
+
+    # ===== GRAYSCALE CONFIGURATION =====
+    CONVERT_TO_GRAYSCALE = True
     
     # ===== RESIZING CONFIGURATION =====
     
     # Target resolution for preprocessing
-    TARGET_WIDTH = 512
-    TARGET_HEIGHT = 512
+    TARGET_WIDTH = 224
+    TARGET_HEIGHT = 224
     
     # Interpolation method: 'linear', 'cubic', 'nearest', 'lanczos'
     RESIZE_INTERPOLATION = 'linear'
@@ -48,38 +51,7 @@ class PreprocessingConfig:
     
     # CLAHE tile grid size (for local contrast)
     CLAHE_TILE_SIZE = (8, 8)
-    
-    # ===== U-NET SEGMENTATION CONFIGURATION =====
-    
-    # U-Net model parameters
-    UNET_INPUT_SIZE = (512, 512)
-    UNET_NUM_CLASSES = 1  # Binary segmentation (ovarian follicle vs background)
-    UNET_FILTERS = 64  # Number of filters in first layer
-    UNET_DEPTH = 4  # Depth of U-Net encoder
-    UNET_DROPOUT_RATE = 0.1
-    
-    # Model weights path (if using pre-trained model)
-    UNET_MODEL_PATH = None  # Path to pre-trained weights
-    
-    # Segmentation threshold
-    SEGMENTATION_THRESHOLD = 0.5
-    
-    # Opt-in only. When False (default), UltrasoundPreprocessor.preprocess_image()
-    # skips segmentation/ROI entirely and normalizes the full CLAHE-enhanced image
-    # instead. When True, it additionally generates classical-thresholding
-    # pseudo-labels (see _generate_placeholder_pseudolabel) and saves them under the
-    # *_placeholder_threshold_WEAK_LABEL stages -- these are NOT validated ground
-    # truth and are never used for final_image. Real segmentation always requires
-    # UNET_MODEL_PATH to point to actual trained weights, loaded via
-    # SegmentationInference, independent of this flag.
-    ALLOW_PLACEHOLDER_SEGMENTATION = False
-    
-    # Minimum ROI size (pixels)
-    MIN_ROI_AREA = 1000
-    
-    # Maximum ROI size (pixels)
-    MAX_ROI_AREA = 200000
-    
+        
     # ===== NORMALIZATION CONFIGURATION =====
     
     # Normalization method: 'minmax', 'zscore', 'percentile'
@@ -108,10 +80,6 @@ class PreprocessingConfig:
         'resized': 'resized',
         'denoised': 'denoised',
         'clahe': 'clahe_enhanced',
-        'segmentation': 'segmentation',                # real trained-U-Net masks only
-        'roi': 'roi_extracted',                         # real trained-U-Net ROI only
-        'segmentation_placeholder_threshold_WEAK_LABEL': 'segmentation_placeholder_WEAK_LABEL',
-        'roi_placeholder_threshold_WEAK_LABEL': 'roi_placeholder_WEAK_LABEL',
         'normalized': 'normalized'
     }
     
@@ -202,19 +170,7 @@ class PreprocessingConfig:
             'clip_limit': cls.CLAHE_CLIP_LIMIT,
             'tile_size': cls.CLAHE_TILE_SIZE
         }
-    
-    @classmethod
-    def get_unet_params(cls) -> Dict[str, Any]:
-        """Get U-Net parameters"""
-        return {
-            'input_size': cls.UNET_INPUT_SIZE,
-            'num_classes': cls.UNET_NUM_CLASSES,
-            'filters': cls.UNET_FILTERS,
-            'depth': cls.UNET_DEPTH,
-            'dropout_rate': cls.UNET_DROPOUT_RATE,
-            'model_path': cls.UNET_MODEL_PATH,
-            'segmentation_threshold': cls.SEGMENTATION_THRESHOLD
-        }
+
     
     @classmethod
     def get_normalization_params(cls) -> Dict[str, Any]:

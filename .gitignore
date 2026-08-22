@@ -50,3 +50,11 @@ env/
 Thumbs.db
 
 package-lock.json
+
+# ---preprocessing outputs----
+preprocessing_outputs/
+__pycache__/
+*.pyc
+.pytest_cache/backend/preprocessing_outputs_dataset/
+
+backend/preprocessing_outputs_dataset/

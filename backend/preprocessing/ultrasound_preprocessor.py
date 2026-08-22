@@ -1,230 +1,881 @@
 """
-Ultrasound Preprocessing Configuration
-Configurable parameters for ultrasound image preprocessing pipeline
+Ultrasound Preprocessor
+Implements the ultrasound preprocessing pipeline using PreprocessingConfig.
+
+Pipeline:
+    Original Image
+        ↓
+    Grayscale Conversion
+        ↓
+    Resize to 224 × 224
+        ↓
+    SRAD Speckle Noise Reduction
+        ↓
+    CLAHE Contrast Enhancement
+        ↓
+    Min-Max Normalization
+        ↓
+    Final Preprocessed Image
 """
 
-from typing import Dict, Any
 import os
+import logging
+from typing import Optional, Tuple
 
+import cv2
+import numpy as np
 
-class PreprocessingConfig:
-    """Configuration for ultrasound image preprocessing"""
-    
-    # ===== RESIZING CONFIGURATION =====
-    
-    # Target resolution for preprocessing
-    TARGET_WIDTH = 512
-    TARGET_HEIGHT = 512
-    
-    # Interpolation method: 'linear', 'cubic', 'nearest', 'lanczos'
-    RESIZE_INTERPOLATION = 'linear'
-    
-    # Maintain aspect ratio (True) or force exact dimensions (False)
-    MAINTAIN_ASPECT_RATIO = True
-    
-    # Padding color when maintaining aspect ratio
-    PADDING_COLOR = 0  # Black
-    
-    # ===== SPECKLE NOISE REDUCTION CONFIGURATION =====
-    
-    # Noise reduction method: 'lee' or 'srad'
-    NOISE_REDUCTION_METHOD = 'srad'
-    
-    # Lee filter parameters
-    LEE_FILTER_SIZE = 5  # Kernel size (must be odd)
-    LEE_FILTER_ITERATIONS = 1  # Number of iterations
-    
-    # SRAD parameters (Speckle Reducing Anisotropic Diffusion)
-    SRAD_ITERATIONS = 5  # Number of diffusion iterations (conservative initial test)
-    SRAD_TIME_STEP = 0.05  # Time step for numerical stability (0.01-0.25)
-    SRAD_Q0 = None  # Speckle scale parameter (None = auto-estimate from image)
-    SRAD_KERNEL_SIZE = 3  # Kernel size for local statistics (3-5)
-    SRAD_Q0_ESTIMATION_REGION = 'center'  # 'center', 'corners', or 'full' for q0 estimation
-    
-    # ===== CLAHE CONFIGURATION =====
-    
-    # CLAHE clip limit (contrast enhancement)
-    CLAHE_CLIP_LIMIT = 2.0
-    
-    # CLAHE tile grid size (for local contrast)
-    CLAHE_TILE_SIZE = (8, 8)
-    
-    # ===== U-NET SEGMENTATION CONFIGURATION =====
-    
-    # U-Net model parameters
-    UNET_INPUT_SIZE = (512, 512)
-    UNET_NUM_CLASSES = 1  # Binary segmentation (ovarian follicle vs background)
-    UNET_FILTERS = 64  # Number of filters in first layer
-    UNET_DEPTH = 4  # Depth of U-Net encoder
-    UNET_DROPOUT_RATE = 0.1
-    
-    # Model weights path (if using pre-trained model)
-    UNET_MODEL_PATH = None  # Path to pre-trained weights
-    
-    # Segmentation threshold
-    SEGMENTATION_THRESHOLD = 0.5
-    
-    # Opt-in only. When False (default), UltrasoundPreprocessor.preprocess_image()
-    # skips segmentation/ROI entirely and normalizes the full CLAHE-enhanced image
-    # instead. When True, it additionally generates classical-thresholding
-    # pseudo-labels (see _generate_placeholder_pseudolabel) and saves them under the
-    # *_placeholder_threshold_WEAK_LABEL stages -- these are NOT validated ground
-    # truth and are never used for final_image. Real segmentation always requires
-    # UNET_MODEL_PATH to point to actual trained weights, loaded via
-    # SegmentationInference, independent of this flag.
-    ALLOW_PLACEHOLDER_SEGMENTATION = False
-    
-    # Minimum ROI size (pixels)
-    MIN_ROI_AREA = 1000
-    
-    # Maximum ROI size (pixels)
-    MAX_ROI_AREA = 200000
-    
-    # ===== NORMALIZATION CONFIGURATION =====
-    
-    # Normalization method: 'minmax', 'zscore', 'percentile'
-    NORMALIZATION_METHOD = 'minmax'
-    
-    # Min-max normalization range
-    NORMALIZATION_MIN = 0.0
-    NORMALIZATION_MAX = 1.0
-    
-    # Z-score parameters
-    Z_SCORE_MEAN = 0.0
-    Z_SCORE_STD = 1.0
-    
-    # Percentile normalization
-    PERCENTILE_LOWER = 1.0
-    PERCENTILE_UPPER = 99.0
-    
-    # ===== OUTPUT DIRECTORY CONFIGURATION =====
-    
-    # Base directory for preprocessing outputs
-    OUTPUT_BASE_DIR = "preprocessing_outputs"
-    
-    # Subdirectories for each stage
-    STAGE_DIRECTORIES = {
-        'original': 'original',
-        'resized': 'resized',
-        'denoised': 'denoised',
-        'clahe': 'clahe_enhanced',
-        'segmentation': 'segmentation',                # real trained-U-Net masks only
-        'roi': 'roi_extracted',                         # real trained-U-Net ROI only
-        'segmentation_placeholder_threshold_WEAK_LABEL': 'segmentation_placeholder_WEAK_LABEL',
-        'roi_placeholder_threshold_WEAK_LABEL': 'roi_placeholder_WEAK_LABEL',
-        'normalized': 'normalized'
-    }
-    
-    # Image format for outputs
-    OUTPUT_FORMAT = 'png'
-    
-    # Quality for lossy formats (if using JPEG)
-    OUTPUT_QUALITY = 95
-    
-    # ===== LOGGING CONFIGURATION =====
-    
-    # Log level: 'DEBUG', 'INFO', 'WARNING', 'ERROR'
-    LOG_LEVEL = 'INFO'
-    
-    # Log file path
-    LOG_FILE = 'preprocessing.log'
-    
-    # Log to console
-    LOG_TO_CONSOLE = True
-    
-    # ===== ERROR HANDLING CONFIGURATION =====
-    
-    # Continue processing on error (True) or stop (False)
-    CONTINUE_ON_ERROR = False
-    
-    # Save intermediate results even if later stages fail
-    SAVE_INTERMEDIATE_ON_ERROR = True
-    
-    @classmethod
-    def get_output_path(cls, stage: str, image_id: str) -> str:
+from configs.preprocessing_config import PreprocessingConfig
+
+class UltrasoundPreprocessor:
+    """Preprocessing pipeline for ultrasound images."""
+
+    def __init__(self, config=PreprocessingConfig):
         """
-        Get output path for a specific preprocessing stage
-        
+        Initialize the ultrasound preprocessor.
+
         Args:
-            stage: Preprocessing stage name
-            image_id: Image identifier
-            
-        Returns:
-            Full path to output file
+            config: PreprocessingConfig class containing pipeline parameters.
         """
-        stage_dir = cls.STAGE_DIRECTORIES.get(stage, stage)
-        filename = f"{image_id}.{cls.OUTPUT_FORMAT}"
-        return os.path.join(cls.OUTPUT_BASE_DIR, stage_dir, filename)
-    
-    @classmethod
-    def ensure_output_directories(cls) -> None:
-        """Create all output directories if they don't exist"""
-        for stage_dir in cls.STAGE_DIRECTORIES.values():
-            dir_path = os.path.join(cls.OUTPUT_BASE_DIR, stage_dir)
-            os.makedirs(dir_path, exist_ok=True)
-    
-    @classmethod
-    def get_resize_params(cls) -> Dict[str, Any]:
-        """Get resizing parameters"""
-        return {
-            'target_width': cls.TARGET_WIDTH,
-            'target_height': cls.TARGET_HEIGHT,
-            'interpolation': cls.RESIZE_INTERPOLATION,
-            'maintain_aspect_ratio': cls.MAINTAIN_ASPECT_RATIO,
-            'padding_color': cls.PADDING_COLOR
-        }
-    
-    @classmethod
-    def get_noise_reduction_params(cls) -> Dict[str, Any]:
-        """Get noise reduction parameters"""
-        if cls.NOISE_REDUCTION_METHOD == 'lee':
-            return {
-                'method': 'lee',
-                'filter_size': cls.LEE_FILTER_SIZE,
-                'iterations': cls.LEE_FILTER_ITERATIONS
-            }
-        elif cls.NOISE_REDUCTION_METHOD == 'srad':
-            return {
-                'method': 'srad',
-                'iterations': cls.SRAD_ITERATIONS,
-                'time_step': cls.SRAD_TIME_STEP,
-                'q0': cls.SRAD_Q0,
-                'kernel_size': cls.SRAD_KERNEL_SIZE,
-                'q0_estimation_region': cls.SRAD_Q0_ESTIMATION_REGION
-            }
+        self.config = config
+
+        # Create output directories
+        self.config.ensure_output_directories()
+
+        # Configure logging
+        self._setup_logging()
+
+    # ============================================================
+    # LOGGING
+    # ============================================================
+
+    def _setup_logging(self):
+        """Configure logging for the preprocessing pipeline."""
+
+        self.logger = logging.getLogger("UltrasoundPreprocessor")
+
+        if not self.logger.handlers:
+            self.logger.setLevel(
+                getattr(logging, self.config.LOG_LEVEL)
+            )
+
+            formatter = logging.Formatter(
+                "%(asctime)s - %(levelname)s - %(message)s"
+            )
+
+            if self.config.LOG_TO_CONSOLE:
+                console_handler = logging.StreamHandler()
+                console_handler.setFormatter(formatter)
+                self.logger.addHandler(console_handler)
+
+            if self.config.LOG_FILE:
+                file_handler = logging.FileHandler(
+                    self.config.LOG_FILE
+                )
+                file_handler.setFormatter(formatter)
+                self.logger.addHandler(file_handler)
+
+    # ============================================================
+    # IMAGE LOADING
+    # ============================================================
+
+    def load_image(self, image_path: str) -> np.ndarray:
+        """
+        Load an ultrasound image.
+
+        Args:
+            image_path: Path to input image.
+
+        Returns:
+            Image as NumPy array.
+        """
+
+        if not os.path.exists(image_path):
+            raise FileNotFoundError(
+                f"Image not found: {image_path}"
+            )
+
+        image = cv2.imread(
+            image_path,
+            cv2.IMREAD_UNCHANGED
+        )
+
+        if image is None:
+            raise ValueError(
+                f"Unable to read image: {image_path}"
+            )
+
+        self.logger.info(
+            f"Loaded image: {image_path}"
+        )
+
+        return image
+
+    # ============================================================
+    # GRAYSCALE CONVERSION
+    # ============================================================
+
+    def convert_to_grayscale(
+        self,
+        image: np.ndarray
+    ) -> np.ndarray:
+        """
+        Convert image to grayscale if enabled in configuration.
+
+        Args:
+            image: Input image.
+
+        Returns:
+            Grayscale image.
+        """
+
+        if not self.config.CONVERT_TO_GRAYSCALE:
+            return image
+
+        # Already grayscale
+        if len(image.shape) == 2:
+            return image
+
+        # BGRA → grayscale
+        if image.shape[2] == 4:
+            image = cv2.cvtColor(
+                image,
+                cv2.COLOR_BGRA2GRAY
+            )
+
+        # BGR → grayscale
+        elif image.shape[2] == 3:
+            image = cv2.cvtColor(
+                image,
+                cv2.COLOR_BGR2GRAY
+            )
+
         else:
-            return {'method': cls.NOISE_REDUCTION_METHOD}
-    
-    @classmethod
-    def get_clahe_params(cls) -> Dict[str, Any]:
-        """Get CLAHE parameters"""
-        return {
-            'clip_limit': cls.CLAHE_CLIP_LIMIT,
-            'tile_size': cls.CLAHE_TILE_SIZE
+            raise ValueError(
+                f"Unsupported number of channels: "
+                f"{image.shape[2]}"
+            )
+
+        self.logger.debug(
+            "Converted image to grayscale"
+        )
+
+        return image
+
+    # ============================================================
+    # RESIZING
+    # ============================================================
+
+    def resize_image(
+        self,
+        image: np.ndarray
+    ) -> np.ndarray:
+        """
+        Resize image according to configuration.
+
+        Supports aspect-ratio-preserving resize with padding
+        or direct resizing to the target dimensions.
+        """
+
+        target_width = self.config.TARGET_WIDTH
+        target_height = self.config.TARGET_HEIGHT
+
+        if not self.config.MAINTAIN_ASPECT_RATIO:
+
+            resized = cv2.resize(
+                image,
+                (target_width, target_height),
+                interpolation=self._get_interpolation()
+            )
+
+            return resized
+
+        # Original dimensions
+        height, width = image.shape[:2]
+
+        if width == 0 or height == 0:
+            raise ValueError(
+                "Invalid image dimensions."
+            )
+
+        # Scale while maintaining aspect ratio
+        scale = min(
+            target_width / width,
+            target_height / height
+        )
+
+        new_width = max(
+            1,
+            int(round(width * scale))
+        )
+
+        new_height = max(
+            1,
+            int(round(height * scale))
+        )
+
+        resized = cv2.resize(
+            image,
+            (new_width, new_height),
+            interpolation=self._get_interpolation()
+        )
+
+        # Create padded output
+        padded = np.full(
+            (target_height, target_width),
+            self.config.PADDING_COLOR,
+            dtype=resized.dtype
+        )
+
+        # Center image
+        x_offset = (target_width - new_width) // 2
+        y_offset = (target_height - new_height) // 2
+
+        padded[
+            y_offset:y_offset + new_height,
+            x_offset:x_offset + new_width
+        ] = resized
+
+        return padded
+
+    def _get_interpolation(self) -> int:
+        """Convert interpolation configuration to OpenCV constant."""
+
+        interpolation = self.config.RESIZE_INTERPOLATION.lower()
+
+        mapping = {
+            "nearest": cv2.INTER_NEAREST,
+            "linear": cv2.INTER_LINEAR,
+            "cubic": cv2.INTER_CUBIC,
+            "lanczos": cv2.INTER_LANCZOS4
         }
-    
-    @classmethod
-    def get_unet_params(cls) -> Dict[str, Any]:
-        """Get U-Net parameters"""
-        return {
-            'input_size': cls.UNET_INPUT_SIZE,
-            'num_classes': cls.UNET_NUM_CLASSES,
-            'filters': cls.UNET_FILTERS,
-            'depth': cls.UNET_DEPTH,
-            'dropout_rate': cls.UNET_DROPOUT_RATE,
-            'model_path': cls.UNET_MODEL_PATH,
-            'segmentation_threshold': cls.SEGMENTATION_THRESHOLD
-        }
-    
-    @classmethod
-    def get_normalization_params(cls) -> Dict[str, Any]:
-        """Get normalization parameters"""
-        return {
-            'method': cls.NORMALIZATION_METHOD,
-            'min': cls.NORMALIZATION_MIN,
-            'max': cls.NORMALIZATION_MAX,
-            'z_score_mean': cls.Z_SCORE_MEAN,
-            'z_score_std': cls.Z_SCORE_STD,
-            'percentile_lower': cls.PERCENTILE_LOWER,
-            'percentile_upper': cls.PERCENTILE_UPPER
-        }
+
+        if interpolation not in mapping:
+            raise ValueError(
+                f"Unsupported interpolation method: "
+                f"{interpolation}"
+            )
+
+        return mapping[interpolation]
+
+    # ============================================================
+    # SRAD SPECKLE NOISE REDUCTION
+    # ============================================================
+
+    def apply_srad(
+        self,
+        image: np.ndarray
+    ) -> np.ndarray:
+        """
+        Apply Speckle Reducing Anisotropic Diffusion (SRAD).
+
+        Uses the configuration parameters:
+            SRAD_ITERATIONS
+            SRAD_TIME_STEP
+            SRAD_Q0
+            SRAD_KERNEL_SIZE
+            SRAD_Q0_ESTIMATION_REGION
+        """
+
+        # Convert to float
+        img = image.astype(np.float32)
+
+        # Normalize temporarily to [0, 1]
+        min_val = np.min(img)
+        max_val = np.max(img)
+
+        if max_val > min_val:
+            img = (img - min_val) / (
+                max_val - min_val
+            )
+        else:
+            return image.copy()
+
+        iterations = self.config.SRAD_ITERATIONS
+        dt = self.config.SRAD_TIME_STEP
+        kernel_size = self.config.SRAD_KERNEL_SIZE
+
+        # Estimate q0 automatically if required
+        q0 = self.config.SRAD_Q0
+
+        if q0 is None:
+            q0 = self._estimate_q0(
+                img
+            )
+
+        q0 = max(float(q0), 1e-6)
+
+        for _ in range(iterations):
+
+            # Local statistics
+            mean = cv2.blur(
+                img,
+                (kernel_size, kernel_size)
+            )
+
+            mean_sq = cv2.blur(
+                img * img,
+                (kernel_size, kernel_size)
+            )
+
+            variance = np.maximum(
+                mean_sq - mean * mean,
+                0
+            )
+
+            coefficient_of_variation_sq = (
+                variance /
+                (mean * mean + 1e-8)
+            )
+
+            # SRAD diffusion coefficient
+            numerator = (
+                coefficient_of_variation_sq
+                - q0 * q0
+            )
+
+            denominator = (
+                q0 * q0 *
+                (1.0 + q0 * q0)
+                + 1e-8
+            )
+
+            diffusion = 1.0 / (
+                1.0 +
+                np.maximum(
+                    numerator / denominator,
+                    0
+                )
+            )
+
+            # Approximate diffusion using Laplacian
+            laplacian = cv2.Laplacian(
+                img,
+                cv2.CV_32F
+            )
+
+            img = img + (
+                dt * diffusion * laplacian
+            )
+
+            img = np.clip(
+                img,
+                0.0,
+                1.0
+            )
+
+        # Convert back to 8-bit
+        result = (
+            img * 255.0
+        ).astype(np.uint8)
+
+        return result
+
+    def _estimate_q0(
+        self,
+        image: np.ndarray
+    ) -> float:
+        """
+        Estimate SRAD speckle scale parameter q0.
+        """
+
+        region = (
+            self.config.SRAD_Q0_ESTIMATION_REGION
+            .lower()
+        )
+
+        height, width = image.shape
+
+        if region == "center":
+
+            h_start = height // 4
+            h_end = 3 * height // 4
+
+            w_start = width // 4
+            w_end = 3 * width // 4
+
+            sample = image[
+                h_start:h_end,
+                w_start:w_end
+            ]
+
+        elif region == "corners":
+
+            size = min(
+                height,
+                width
+            ) // 4
+
+            samples = [
+                image[:size, :size],
+                image[:size, -size:],
+                image[-size:, :size],
+                image[-size:, -size:]
+            ]
+
+            sample = np.concatenate(
+                [s.flatten() for s in samples]
+            )
+
+        else:
+            sample = image
+
+        mean = np.mean(sample)
+        std = np.std(sample)
+
+        if mean < 1e-8:
+            return 0.1
+
+        q0 = std / mean
+
+        return float(
+            max(q0, 0.01)
+        )
+
+    # ============================================================
+    # CLAHE
+    # ============================================================
+
+    def apply_clahe(
+        self,
+        image: np.ndarray
+    ) -> np.ndarray:
+        """
+        Apply Contrast Limited Adaptive Histogram Equalization.
+        """
+
+        clahe = cv2.createCLAHE(
+            clipLimit=self.config.CLAHE_CLIP_LIMIT,
+            tileGridSize=self.config.CLAHE_TILE_SIZE
+        )
+
+        enhanced = clahe.apply(
+            image
+        )
+
+        return enhanced
+
+    # ============================================================
+    # NORMALIZATION
+    # ============================================================
+
+    def normalize_image(
+        self,
+        image: np.ndarray
+    ) -> np.ndarray:
+        """
+        Normalize image according to configuration.
+
+        Current default:
+            Min-Max normalization → [0, 1]
+        """
+
+        method = (
+            self.config.NORMALIZATION_METHOD
+            .lower()
+        )
+
+        image_float = image.astype(
+            np.float32
+        )
+
+        if method == "minmax":
+
+            old_min = np.min(
+                image_float
+            )
+
+            old_max = np.max(
+                image_float
+            )
+
+            if old_max == old_min:
+                return np.full_like(
+                    image_float,
+                    self.config.NORMALIZATION_MIN,
+                    dtype=np.float32
+                )
+
+            normalized = (
+                (image_float - old_min)
+                /
+                (old_max - old_min)
+            )
+
+            new_min = (
+                self.config.NORMALIZATION_MIN
+            )
+
+            new_max = (
+                self.config.NORMALIZATION_MAX
+            )
+
+            normalized = (
+                normalized *
+                (new_max - new_min)
+                + new_min
+            )
+
+            return normalized.astype(
+                np.float32
+            )
+
+        elif method == "zscore":
+
+            mean = np.mean(
+                image_float
+            )
+
+            std = np.std(
+                image_float
+            )
+
+            if std < 1e-8:
+                return np.zeros_like(
+                    image_float,
+                    dtype=np.float32
+                )
+
+            return (
+                (image_float - mean) / std
+            ).astype(np.float32)
+
+        elif method == "percentile":
+
+            lower = np.percentile(
+                image_float,
+                self.config.PERCENTILE_LOWER
+            )
+
+            upper = np.percentile(
+                image_float,
+                self.config.PERCENTILE_UPPER
+            )
+
+            if upper <= lower:
+                return np.zeros_like(
+                    image_float,
+                    dtype=np.float32
+                )
+
+            normalized = (
+                (image_float - lower)
+                /
+                (upper - lower)
+            )
+
+            normalized = np.clip(
+                normalized,
+                0.0,
+                1.0
+            )
+
+            return normalized.astype(
+                np.float32
+            )
+
+        else:
+            raise ValueError(
+                f"Unsupported normalization method: "
+                f"{method}"
+            )
+
+    # ============================================================
+    # SAVE IMAGE
+    # ============================================================
+
+    def save_stage(
+        self,
+        image: np.ndarray,
+        stage: str,
+        image_id: str
+    ) -> str:
+        """
+        Save an intermediate/final preprocessing stage.
+        """
+
+        output_path = (
+            self.config.get_output_path(
+                stage,
+                image_id
+            )
+        )
+
+        os.makedirs(
+            os.path.dirname(output_path),
+            exist_ok=True
+        )
+
+        # Normalized images are float [0,1].
+        # PNG expects an integer representation,
+        # so convert only when saving.
+        if (
+            image.dtype == np.float32
+            or image.dtype == np.float64
+        ):
+            save_image = np.clip(
+                image,
+                0.0,
+                1.0
+            )
+
+            save_image = (
+                save_image * 255.0
+            ).astype(np.uint8)
+
+        else:
+            save_image = image
+
+        success = cv2.imwrite(
+            output_path,
+            save_image
+        )
+
+        if not success:
+            raise IOError(
+                f"Failed to save image: "
+                f"{output_path}"
+            )
+
+        return output_path
+
+    # ============================================================
+    # COMPLETE PIPELINE
+    # ============================================================
+
+    def preprocess_image(
+        self,
+        image_path: str,
+        image_id: Optional[str] = None
+    ) -> Tuple[np.ndarray, dict]:
+        """
+        Run the complete ultrasound preprocessing pipeline.
+
+        Pipeline:
+            Load
+            → Grayscale
+            → Resize
+            → SRAD
+            → CLAHE
+            → Min-Max normalization
+
+        Returns:
+            final_image:
+                Normalized image as float32 in [0,1].
+
+            stage_paths:
+                Dictionary containing paths to saved stages.
+        """
+
+        if image_id is None:
+            image_id = os.path.splitext(
+                os.path.basename(image_path)
+            )[0]
+
+        stage_paths = {}
+
+        try:
+
+            # ----------------------------------------------------
+            # 1. LOAD
+            # ----------------------------------------------------
+
+            image = self.load_image(
+                image_path
+            )
+
+            stage_paths["original"] = (
+                self.save_stage(
+                    image,
+                    "original",
+                    image_id
+                )
+            )
+
+            # ----------------------------------------------------
+            # 2. GRAYSCALE
+            # ----------------------------------------------------
+
+            image = self.convert_to_grayscale(
+                image
+            )
+
+            # ----------------------------------------------------
+            # 3. RESIZE
+            # ----------------------------------------------------
+
+            image = self.resize_image(
+                image
+            )
+
+            stage_paths["resized"] = (
+                self.save_stage(
+                    image,
+                    "resized",
+                    image_id
+                )
+            )
+
+            # ----------------------------------------------------
+            # 4. SRAD
+            # ----------------------------------------------------
+
+            if (
+                self.config.NOISE_REDUCTION_METHOD
+                .lower()
+                == "srad"
+            ):
+
+                image = self.apply_srad(
+                    image
+                )
+
+            elif (
+                self.config.NOISE_REDUCTION_METHOD
+                .lower()
+                == "lee"
+            ):
+
+                image = self.apply_lee_filter(
+                    image
+                )
+
+            else:
+
+                raise ValueError(
+                    "Unsupported noise reduction method: "
+                    f"{self.config.NOISE_REDUCTION_METHOD}"
+                )
+
+            stage_paths["denoised"] = (
+                self.save_stage(
+                    image,
+                    "denoised",
+                    image_id
+                )
+            )
+
+            # ----------------------------------------------------
+            # 5. CLAHE
+            # ----------------------------------------------------
+
+            image = self.apply_clahe(
+                image
+            )
+
+            stage_paths["clahe"] = (
+                self.save_stage(
+                    image,
+                    "clahe",
+                    image_id
+                )
+            )
+
+            # ----------------------------------------------------
+            # 6. NORMALIZATION
+            # ----------------------------------------------------
+
+            final_image = self.normalize_image(
+                image
+            )
+
+            stage_paths["normalized"] = (
+                self.save_stage(
+                    final_image,
+                    "normalized",
+                    image_id
+                )
+            )
+
+            # ----------------------------------------------------
+            # LOGGING
+            # ----------------------------------------------------
+
+            self.logger.info(
+                f"Preprocessing completed: {image_id}"
+            )
+
+            self.logger.info(
+                f"Final shape: {final_image.shape}"
+            )
+
+            self.logger.info(
+                f"Final range: "
+                f"{final_image.min():.4f} - "
+                f"{final_image.max():.4f}"
+            )
+
+            return final_image, stage_paths
+
+        except Exception as e:
+
+            self.logger.error(
+                f"Preprocessing failed for "
+                f"{image_id}: {str(e)}"
+            )
+
+            if not self.config.CONTINUE_ON_ERROR:
+                raise
+
+            return None, stage_paths
+
+    # ============================================================
+    # LEE FILTER
+    # ============================================================
+
+    def apply_lee_filter(
+        self,
+        image: np.ndarray
+    ) -> np.ndarray:
+        """
+        Apply a Lee filter for speckle noise reduction.
+        """
+
+        img = image.astype(
+            np.float32
+        )
+
+        kernel_size = (
+            self.config.LEE_FILTER_SIZE
+        )
+
+        iterations = (
+            self.config.LEE_FILTER_ITERATIONS
+        )
+
+        for _ in range(iterations):
+
+            mean = cv2.blur(
+                img,
+                (kernel_size, kernel_size)
+            )
+
+            mean_sq = cv2.blur(
+                img * img,
+                (kernel_size, kernel_size)
+            )
+
+            variance = np.maximum(
+                mean_sq - mean * mean,
+                0
+            )
+
+            noise_variance = np.mean(
+                variance
+            )
+
+            weight = (
+                variance /
+                (variance + noise_variance + 1e-8)
+            )
+
+            img = (
+                mean +
+                weight * (img - mean)
+            )
+
+        return np.clip(
+            img,
+            0,
+            255
+        ).astype(np.uint8)
